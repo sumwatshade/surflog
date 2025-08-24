@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,7 +22,13 @@ var rootCmd = &cobra.Command{
 and log entries about your favorite surf spots/days.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p := tea.NewProgram(initialModel())
+
+		_, err := p.Run()
+
+		return err
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
