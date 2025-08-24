@@ -66,7 +66,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "buoy":
 		return buoy.HandleUpdate(m, msg)
 	case "journal":
-		return journal.HandleUpdate(m, msg)
+		if m.journal != nil {
+			cmd := m.journal.Update(msg, m.width, m.height)
+			return m, cmd
+		}
+		return m, nil
 	case "create":
 		return create.HandleUpdate(m, msg)
 	}
@@ -81,7 +85,11 @@ func (m model) View() string {
 	case "buoy":
 		content = buoy.View(m.buoyData)
 	case "journal":
-		content = journal.View(m.journal)
+		if m.journal != nil {
+			content = m.journal.View()
+		} else {
+			content = "journal unavailable"
+		}
 	case "create":
 		content = create.View(m.draftEntry)
 	default:
