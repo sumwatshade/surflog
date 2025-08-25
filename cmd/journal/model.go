@@ -1,6 +1,9 @@
 package journal
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -14,12 +17,16 @@ type Journal struct {
 	ready   bool
 	width   int
 	height  int
+	detail  bool // whether we're showing a single entry
 }
 
 var (
 	statusBarStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 1)
 	filterMatchStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("219")).Bold(true)
 	journalTitleBarStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99"))
+	detailHeaderStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Underline(true)
+	detailMetaStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	faintStyle           = lipgloss.NewStyle().Faint(true)
 )
 
 // NewJournal constructs a journal with some sample entries.
@@ -88,10 +95,18 @@ func (j *Journal) Update(msg tea.Msg, width, height int) tea.Cmd {
 	case tea.KeyMsg:
 		switch m.String() {
 		case "esc":
+			if j.detail { // leave detail view
+				j.detail = false
+				return nil
+			}
 			if j.list.FilterState() == list.Filtering {
 				j.list.ResetFilter()
 				return nil
 			}
+		case "enter":
+			// open detail (even if filtering; keep filter applied so selection context remains)
+			j.detail = true
+			return nil
 		}
 	}
 	var cmd tea.Cmd
@@ -106,6 +121,27 @@ func (j *Journal) View() string {
 	}
 	if len(j.Entries) == 0 {
 		return journalTitleBarStyle.Render("Journal") + "\n" + lipgloss.NewStyle().Faint(true).Render("No entries yet. Press 'c' to create one.")
+	}
+	if j.detail {
+		// render selected entry in full page
+		sel, ok := j.list.SelectedItem().(journalItem)
+		if !ok {
+			j.detail = false
+			return j.list.View()
+		}
+		b := &strings.Builder{}
+		fmt.Fprintln(b, journalTitleBarStyle.Render("Journal Entry"))
+		fmt.Fprintln(b)
+		fmt.Fprintln(b, detailHeaderStyle.Render(sel.Spot))
+		fmt.Fprintln(b, detailMetaStyle.Render(fmt.Sprintf("Location: %s", sel.Location)))
+		fmt.Fprintln(b, detailMetaStyle.Render(fmt.Sprintf("Waves: %s", sel.WaveData)))
+		if sel.Comments != "" {
+			fmt.Fprintln(b)
+			fmt.Fprintln(b, sel.Comments)
+		}
+		fmt.Fprintln(b)
+		fmt.Fprintln(b, faintStyle.Render("(esc to go back)"))
+		return lipgloss.NewStyle().Width(j.width - 4).Render(b.String())
 	}
 	return j.list.View()
 }

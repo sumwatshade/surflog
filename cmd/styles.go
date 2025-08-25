@@ -15,7 +15,8 @@ var (
 )
 
 func tabs(current string, width int) string {
-	names := []string{"buoy", "journal", "create"}
+	// Only journal/create are switchable; buoy data always visible left.
+	names := []string{"journal", "create"}
 	var rendered []string
 	for _, n := range names {
 		if n == current {
