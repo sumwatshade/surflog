@@ -3,6 +3,7 @@ package journal
 import (
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,8 +20,26 @@ var (
 
 type journalItem struct{ create.Entry }
 
-func (i journalItem) Title() string       { return i.Spot }
-func (i journalItem) Description() string { return i.WaveSummary.String() }
+func (i journalItem) Title() string { return i.Spot }
+func (i journalItem) Description() string {
+	// include session date/time (local) if available
+	ts := ""
+	if !i.SessionAt.IsZero() {
+		ts = i.SessionAt.Format("2006-01-02 15:04")
+	} else if strings.TrimSpace(i.CreatedAt) != "" { // fallback parse
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(i.CreatedAt)); err == nil {
+			ts = t.Local().Format("2006-01-02 15:04")
+		}
+	}
+	ws := i.WaveSummary.String()
+	if ws != "" && ts != "" {
+		return ws + " | " + ts
+	}
+	if ts != "" {
+		return ts
+	}
+	return ws
+}
 func (i journalItem) FilterValue() string {
 	return strings.ToLower(strings.Join([]string{i.Spot, i.WaveSummary.String(), i.Comments}, " "))
 }

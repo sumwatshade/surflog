@@ -20,6 +20,7 @@ type Service interface {
 	Get(id string) (create.Entry, error)
 	Create(e create.Entry) (create.Entry, error)
 	Update(id string, mutate func(*create.Entry) error) (create.Entry, error)
+	Delete(id string) error
 }
 
 var _ Service = (*fileService)(nil)
@@ -141,4 +142,15 @@ func (s *fileService) Update(id string, mutate func(*create.Entry) error) (creat
 		return create.Entry{}, err
 	}
 	return cur, nil
+}
+
+func (s *fileService) Delete(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("empty id")
+	}
+	// best-effort remove
+	if err := os.Remove(s.entryPath(id)); err != nil {
+		return err
+	}
+	return nil
 }

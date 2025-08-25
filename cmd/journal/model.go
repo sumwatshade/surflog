@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +25,9 @@ type Journal struct {
 	height  int
 	detail  bool // whether we're showing a single entry
 	svc     Service
+	// deletion state
+	confirmingDelete bool   // user pressed delete, awaiting confirmation
+	deleteTargetID   string // id of entry pending deletion
 }
 
 var (
@@ -53,6 +58,7 @@ func NewJournal() *Journal {
 		if svc, serr := NewFileService(dir); serr == nil {
 			if list, lerr := svc.List(); lerr == nil {
 				j.Entries = append(j.Entries, list...)
+				j.sortEntries()
 			}
 			j.svc = svc
 		}
@@ -63,8 +69,9 @@ func NewJournal() *Journal {
 // AddEntry appends to underlying slice and (if list initialized) inserts item.
 func (j *Journal) AddEntry(entry create.Entry) {
 	j.Entries = append(j.Entries, entry)
+	j.sortEntries()
 	if j.ready {
-		j.list.InsertItem(0, journalItem{entry}) // newest first
+		j.refreshListItems()
 	}
 }
 
@@ -90,9 +97,9 @@ func (j *Journal) ensureList(width, height int) {
 	j.height = height
 	listHeight := max(5, height-6) // leave space for header/footer around view
 	if !j.ready {
+		j.sortEntries()
 		items := make([]list.Item, 0, len(j.Entries))
-		// newest first
-		for i := len(j.Entries) - 1; i >= 0; i-- {
+		for i := 0; i < len(j.Entries); i++ { // already sorted desc
 			items = append(items, journalItem{j.Entries[i]})
 		}
 		l := list.New(items, itemDelegate{}, width-4, listHeight) // -4 for padding
@@ -126,6 +133,11 @@ func (j *Journal) Update(msg tea.Msg, width, height int) tea.Cmd {
 				j.detail = false
 				return nil
 			}
+			if j.confirmingDelete { // cancel deletion
+				j.confirmingDelete = false
+				j.deleteTargetID = ""
+				return nil
+			}
 			if j.list.FilterState() == list.Filtering {
 				j.list.ResetFilter()
 				return nil
@@ -134,6 +146,30 @@ func (j *Journal) Update(msg tea.Msg, width, height int) tea.Cmd {
 			// open detail (even if filtering; keep filter applied so selection context remains)
 			j.detail = true
 			return nil
+		case "x", "delete": // initiate delete (x common; delete key if sent)
+			if j.confirmingDelete { // treat as cancel if repeated
+				j.confirmingDelete = false
+				j.deleteTargetID = ""
+				return nil
+			}
+			if sel, ok := j.list.SelectedItem().(journalItem); ok {
+				j.confirmingDelete = true
+				j.deleteTargetID = sel.ID
+			}
+			return nil
+		case "y": // confirm deletion if in confirmation state
+			if j.confirmingDelete && j.deleteTargetID != "" {
+				id := j.deleteTargetID
+				j.confirmingDelete = false
+				j.deleteTargetID = ""
+				return j.deleteEntry(id)
+			}
+		case "n": // cancel deletion
+			if j.confirmingDelete {
+				j.confirmingDelete = false
+				j.deleteTargetID = ""
+				return nil
+			}
 		}
 	}
 	var cmd tea.Cmd
@@ -148,6 +184,15 @@ func (j *Journal) View() string {
 	}
 	if len(j.Entries) == 0 {
 		return journalTitleBarStyle.Render("Journal") + "\n" + lipgloss.NewStyle().Faint(true).Render("No entries yet. Press 'c' to create one.")
+	}
+	// show delete confirmation banner if active
+	if j.confirmingDelete {
+		var spot string
+		if sel, ok := j.list.SelectedItem().(journalItem); ok {
+			spot = sel.Spot
+		}
+		banner := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true).Render("Delete entry '" + spot + "'? (y/n)")
+		return banner + "\n" + j.list.View()
 	}
 	if j.detail {
 		// render selected entry in full page
@@ -178,4 +223,58 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// deleteEntry removes an entry by id from service, underlying slice, and list model.
+func (j *Journal) deleteEntry(id string) tea.Cmd {
+	if id == "" || j.svc == nil { // nothing to do
+		return nil
+	}
+	// delete from service (ignore error for now but could surface)
+	_ = j.svc.Delete(id)
+	// remove from Entries slice
+	for i := range j.Entries {
+		if j.Entries[i].ID == id {
+			j.Entries = append(j.Entries[:i], j.Entries[i+1:]...)
+			break
+		}
+	}
+	if j.ready {
+		// rebuild list items (simpler vs removing by index due to filtering)
+		items := make([]list.Item, 0, len(j.Entries))
+		for i := len(j.Entries) - 1; i >= 0; i-- { // newest first
+			items = append(items, journalItem{j.Entries[i]})
+		}
+		j.list.SetItems(items)
+	}
+	return nil
+}
+
+// sortEntries orders Entries by SessionAt (newest first). Falls back to CreatedAt when SessionAt zero.
+func (j *Journal) sortEntries() {
+	parse := func(e create.Entry) time.Time {
+		if !e.SessionAt.IsZero() {
+			return e.SessionAt
+		}
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(e.CreatedAt)); err == nil {
+			return t
+		}
+		return time.Time{}
+	}
+	sort.SliceStable(j.Entries, func(i, k int) bool {
+		return parse(j.Entries[i]).After(parse(j.Entries[k]))
+	})
+}
+
+// refreshListItems rebuilds list items from sorted Entries.
+func (j *Journal) refreshListItems() {
+	if !j.ready {
+		return
+	}
+	j.sortEntries()
+	items := make([]list.Item, 0, len(j.Entries))
+	for _, e := range j.Entries {
+		items = append(items, journalItem{e})
+	}
+	j.list.SetItems(items)
 }
