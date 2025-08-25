@@ -53,6 +53,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "ctrl+c" {
 				return m, tea.Quit
 			}
+			// Esc cancels draft: clear form and return to journal view
+			if msg.String() == "esc" {
+				m.createForm = nil
+				m.rightView = "journal"
+				return m, nil
+			}
 			break
 		}
 		switch {
@@ -93,7 +99,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.createForm != nil && m.createForm.IsDoneAndUnpersisted() {
 			if m.journal != nil {
 				if _, err := m.journal.Persist(m.createForm.Entry); err == nil {
+					// After successful creation, clear form and return to journal.
+					m.createForm = nil
 					m.rightView = "journal"
+					return m, nil
 				}
 			}
 		}
