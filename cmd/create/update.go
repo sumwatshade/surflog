@@ -4,12 +4,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+type InitFormMsg struct{}
+
+type FormReadyMsg struct{}
+
 // UpdateModel updates the creation form model and returns potential command.
 func UpdateModel(m *Model, msg tea.Msg) (*Model, tea.Cmd) {
-	if m == nil {
-		m = NewModel()
-	}
 	switch msg := msg.(type) {
+	case InitFormMsg:
+		if m == nil {
+			m = NewModel()
+		}
+		m.spotStr = ""
+		return m, func() tea.Msg {
+			return FormReadyMsg{}
+		}
 	case waveSummaryMsg:
 		if msg.Err != nil {
 			m.waveErr = msg.Err

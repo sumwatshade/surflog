@@ -38,6 +38,9 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// buoy update (always run; it internally no-ops when not needed)
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -62,11 +65,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.createForm != nil {
 				m.createForm.Focus()
 			}
+
+			return m, func() tea.Msg {
+				return create.InitFormMsg{}
+			}
 		}
 	}
 
-	// buoy update (always run; it internally no-ops when not needed)
-	var cmds []tea.Cmd
 	var cmd tea.Cmd
 	m.buoyData, cmd = buoy.HandleUpdate(m.buoyData, msg)
 	if cmd != nil {
@@ -87,14 +92,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.createForm != nil && m.createForm.IsDoneAndUnpersisted() {
 			if m.journal != nil {
-				if saved, err := m.journal.Persist(m.createForm.Entry); err == nil {
-					_ = saved
-					m.createForm.MarkPersisted()
-					// reset after short delay command maybe; for now immediate
-					m.createForm = create.NewModel()
-					if m.createForm != nil {
-						m.createForm.Focus()
-					}
+				if _, err := m.journal.Persist(m.createForm.Entry); err == nil {
+					m.rightView = "journal"
 				}
 			}
 		}

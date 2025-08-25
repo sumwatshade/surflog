@@ -50,9 +50,72 @@ type WaveSummary struct {
 	meanWaveDirectionDeg int
 }
 
+// waveSummaryDTO is the exported representation used for JSON persistence.
+type waveSummaryDTO struct {
+	StationID         string    `json:"station_id"`
+	Time              time.Time `json:"time"`
+	SignificantHeight float64   `json:"significant_height_m"`
+	SwellHeight       float64   `json:"swell_height_m"`
+	SwellPeriod       float64   `json:"swell_period_s"`
+	WindWaveHeight    float64   `json:"wind_wave_height_m"`
+	WindWavePeriod    float64   `json:"wind_wave_period_s"`
+	SwellDirection    string    `json:"swell_direction"`
+	WindWaveDirection string    `json:"wind_wave_direction"`
+	Steepness         string    `json:"steepness"`
+	AveragePeriod     float64   `json:"average_period_s"`
+	MeanWaveDirection int       `json:"mean_wave_direction_deg"`
+	Summary           string    `json:"summary"` // human readable string (optional convenience)
+}
+
+// MarshalJSON implements custom JSON encoding while keeping internal fields unexported.
+func (w WaveSummary) MarshalJSON() ([]byte, error) {
+	dto := waveSummaryDTO{
+		StationID:         w.stationId,
+		Time:              w.time,
+		SignificantHeight: w.wvht,
+		SwellHeight:       w.swellHeight,
+		SwellPeriod:       w.swellPeriod,
+		WindWaveHeight:    w.windWaveHeight,
+		WindWavePeriod:    w.windWavePeriod,
+		SwellDirection:    w.swellDirection,
+		WindWaveDirection: w.windWaveDirection,
+		Steepness:         w.steepness,
+		AveragePeriod:     w.averagePeriod,
+		MeanWaveDirection: w.meanWaveDirectionDeg,
+		Summary:           w.String(),
+	}
+	return json.Marshal(dto)
+}
+
+// UnmarshalJSON decodes persisted wave summary data back into the internal struct.
+func (w *WaveSummary) UnmarshalJSON(b []byte) error {
+	// Accept empty or null gracefully.
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+	var dto waveSummaryDTO
+	if err := json.Unmarshal(b, &dto); err != nil {
+		return err
+	}
+	// Populate internal fields.
+	w.stationId = dto.StationID
+	w.time = dto.Time
+	w.wvht = dto.SignificantHeight
+	w.swellHeight = dto.SwellHeight
+	w.swellPeriod = dto.SwellPeriod
+	w.windWaveHeight = dto.WindWaveHeight
+	w.windWavePeriod = dto.WindWavePeriod
+	w.swellDirection = dto.SwellDirection
+	w.windWaveDirection = dto.WindWaveDirection
+	w.steepness = dto.Steepness
+	w.averagePeriod = dto.AveragePeriod
+	w.meanWaveDirectionDeg = dto.MeanWaveDirection
+	return nil
+}
+
 func (w *WaveSummary) String() string {
-	return fmt.Sprintf("%.1fft sig (swell %.1fft @ %.0fs %s / wind %.1fft @ %.0fs %s) | steep %s | avg %.1fs | mean %d°",
-		w.wvht, w.swellHeight, w.swellPeriod, w.swellDirection, w.windWaveHeight, w.windWavePeriod, w.windWaveDirection, w.steepness, w.averagePeriod, w.meanWaveDirectionDeg)
+	return fmt.Sprintf("%.1fft sig (swell %.1fft @ %.0fs %s / wind %.1fft @ %.0fs %s) | avg %.1fs | mean %d°",
+		w.wvht, w.swellHeight, w.swellPeriod, w.swellDirection, w.windWaveHeight, w.windWavePeriod, w.windWaveDirection, w.averagePeriod, w.meanWaveDirectionDeg)
 }
 
 // GetTideData retrieves today's tide prediction data for a fixed station.
