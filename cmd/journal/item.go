@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	itemTitleStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Bold(true)
-	itemDescStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	selectedTitleStyle = itemTitleStyle.Copy().Foreground(lipgloss.Color("51"))
-	selectedDescStyle  = itemDescStyle.Copy().Foreground(lipgloss.Color("245"))
+	itemTitleStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("44")).Bold(true)
+	itemDescStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	selectedTitleStyle = itemTitleStyle.Copy().Foreground(lipgloss.Color("159"))
+	selectedDescStyle  = itemDescStyle.Copy().Foreground(lipgloss.Color("246"))
 )
 
 type journalItem struct{ create.Entry }

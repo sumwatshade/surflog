@@ -25,7 +25,11 @@ type model struct {
 }
 
 func initialModel() model {
-	return model{rightView: "journal", buoyData: nil, journal: journal.NewJournal(), createForm: create.NewModel(), keys: keys, help: bhelp.New()}
+	m := model{rightView: "journal", buoyData: nil, journal: journal.NewJournal(), createForm: create.NewModel(), keys: keys, help: bhelp.New()}
+	if m.createForm != nil {
+		m.createForm.Focus()
+	}
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -38,6 +42,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
+		// When in create view and actively editing the draft form, suppress
+		// global navigation keybindings so characters like 'q' and 'j' go into
+		// the input instead of triggering view changes or quit.
+		if m.rightView == "create" && m.createForm != nil && m.createForm.IsDraft() {
+			// Allow Ctrl+C as an immediate quit escape hatch.
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			break
+		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
@@ -45,6 +59,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rightView = "journal"
 		case key.Matches(msg, m.keys.Create):
 			m.rightView = "create"
+			if m.createForm != nil {
+				m.createForm.Focus()
+			}
 		}
 	}
 
@@ -75,6 +92,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.createForm.MarkPersisted()
 					// reset after short delay command maybe; for now immediate
 					m.createForm = create.NewModel()
+					if m.createForm != nil {
+						m.createForm.Focus()
+					}
 				}
 			}
 		}
@@ -87,7 +107,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	left := buoy.View(m.buoyData)
+	// compute widths first so buoy view can center artwork
+	leftW := max(24, int(float64(m.width)*0.3))
+	rightW := max(20, m.width-leftW-1)
+	left := buoy.ViewSized(m.buoyData, leftW)
 	var right string
 	switch m.rightView {
 	case "journal":
@@ -102,9 +125,7 @@ func (m model) View() string {
 		right = "unknown"
 	}
 
-	// determine split sizes (30% left min width 24)
-	leftW := max(24, int(float64(m.width)*0.3))
-	rightW := max(20, m.width-leftW-1)
+	// determine split sizes (already computed) (30% left min width 24)
 	leftRendered := lipgloss.NewStyle().Width(leftW).Render(contentStyle.Render(left))
 	rightRendered := lipgloss.NewStyle().Width(rightW).Render(contentStyle.Render(right))
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, leftRendered, dividerStyle.Render("│"), rightRendered)

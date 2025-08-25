@@ -8,10 +8,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var createTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("219"))
-var faint = lipgloss.NewStyle().Faint(true)
-var errStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-var highlight = lipgloss.NewStyle().Foreground(lipgloss.Color("51")).Bold(true)
+var createTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("44"))
+var faint = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("245"))
+var errStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("203")) // keep red for errors
+var highlight = lipgloss.NewStyle().Foreground(lipgloss.Color("159")).Bold(true)
 
 // View renders the huh form state and supplemental wave info
 func View(m *Model) string {

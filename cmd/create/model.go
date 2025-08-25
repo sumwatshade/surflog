@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sumwatshade/surflog/cmd/buoy"
 )
 
@@ -27,6 +28,7 @@ var HeightOptions = []string{"Ankle", "Knee", "Waist", "Chest", "Shoulder", "Hea
 type Model struct {
 	Entry          Entry
 	form           *huh.Form
+	spotInput      *huh.Input // keep reference to first input to force focus
 	waveService    buoy.Service
 	waveErr        error
 	waveFetched    bool
@@ -50,14 +52,30 @@ func NewModel() *Model {
 	return m
 }
 
+// Focus first input (spot) for convenience.
+func (m *Model) Focus() {
+	if m == nil || m.form == nil {
+		return
+	}
+	if m.spotInput != nil {
+		// Attempt to focus; ignore if library signature differs.
+		_ = m.spotInput.Focus
+		m.spotInput.Focus()
+	}
+}
+
 func (m *Model) buildForm() {
+	spot := huh.NewInput().Title("Spot").Value(&m.spotStr)
+	m.spotInput = spot
 	m.form = huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().Title("Spot").Value(&m.spotStr),
+			spot,
 			huh.NewSelect[string]().Title("Perceived Wave Height").Options(selectOptions(HeightOptions)...).Value(&m.heightStr),
 			huh.NewText().Title("Comments").Value(&m.commentsStr),
 		),
-	).WithShowHelp(false)
+	).WithShowHelp(false).WithTheme(oceanTheme())
+	// Explicit first-field focus.
+	m.Focus()
 }
 
 func selectOptions(vals []string) []huh.Option[string] {
@@ -118,6 +136,9 @@ func (m *Model) fetchWaveSummaryCmd() tea.Cmd {
 	}
 }
 
+// IsDraft indicates form not yet completed.
+func (m *Model) IsDraft() bool { return m != nil && !m.completed }
+
 // IsDoneAndUnpersisted returns true only after user confirmed save.
 func (m *Model) IsDoneAndUnpersisted() bool {
 	return m != nil && m.completed && m.confirmed && !m.persisted
@@ -131,4 +152,56 @@ func (m *Model) MarkPersisted() {
 type waveSummaryMsg struct {
 	Summary buoy.WaveSummary
 	Err     error
+}
+
+// oceanTheme builds a custom ocean-colored theme matching application palette.
+func oceanTheme() *huh.Theme {
+	t := huh.ThemeBase()
+	deep := lipgloss.Color("24")    // deep blue background accent
+	cyan := lipgloss.Color("44")    // cyan titles
+	accent := lipgloss.Color("159") // seafoam accent
+	grey := lipgloss.Color("246")   // text
+	faint := lipgloss.Color("245")  // faint text
+	errCol := lipgloss.Color("203") // error
+
+	t.FieldSeparator = lipgloss.NewStyle().SetString("\n\n")
+
+	// Focused field styles
+	t.Focused.Base = lipgloss.NewStyle().PaddingLeft(1).BorderStyle(lipgloss.ThickBorder()).BorderLeft(true).BorderForeground(cyan)
+	t.Focused.Title = t.Focused.Title.Foreground(cyan).Bold(true)
+	t.Focused.Description = t.Focused.Description.Foreground(faint)
+	t.Focused.ErrorIndicator = t.Focused.ErrorIndicator.Foreground(errCol)
+	t.Focused.ErrorMessage = t.Focused.ErrorMessage.Foreground(errCol)
+	t.Focused.SelectSelector = t.Focused.SelectSelector.Foreground(accent)
+	t.Focused.NextIndicator = t.Focused.NextIndicator.Foreground(accent)
+	t.Focused.PrevIndicator = t.Focused.PrevIndicator.Foreground(accent)
+	t.Focused.Option = t.Focused.Option.Foreground(grey)
+	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(accent)
+	t.Focused.SelectedPrefix = t.Focused.SelectedPrefix.Foreground(accent)
+	t.Focused.UnselectedOption = t.Focused.UnselectedOption.Foreground(grey)
+	t.Focused.UnselectedPrefix = t.Focused.UnselectedPrefix.Foreground(faint)
+	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(lipgloss.Color("15")).Background(cyan)
+	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(grey).Background(deep)
+	t.Focused.Next = t.Focused.FocusedButton
+	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(accent)
+	t.Focused.TextInput.Placeholder = t.Focused.TextInput.Placeholder.Foreground(faint)
+	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(cyan)
+	t.Focused.TextInput.Text = t.Focused.TextInput.Text.Foreground(grey)
+
+	// Blurred copies focused, hides border, neutral indicators
+	t.Blurred = t.Focused
+	t.Blurred.Base = t.Blurred.Base.BorderStyle(lipgloss.HiddenBorder())
+	t.Blurred.Card = t.Blurred.Base
+	t.Blurred.SelectSelector = lipgloss.NewStyle().SetString("  ")
+	t.Blurred.NextIndicator = lipgloss.NewStyle()
+	t.Blurred.PrevIndicator = lipgloss.NewStyle()
+	t.Blurred.FocusedButton = t.Focused.FocusedButton
+	t.Blurred.TextInput.Cursor = t.Focused.TextInput.Cursor
+	t.Blurred.TextInput.Placeholder = t.Focused.TextInput.Placeholder
+	t.Blurred.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(faint)
+	t.Blurred.TextInput.Text = t.Focused.TextInput.Text
+
+	t.Group.Title = t.Focused.Title
+	t.Group.Description = t.Focused.Description
+	return t
 }

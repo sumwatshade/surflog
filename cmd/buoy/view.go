@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var buoyTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
-var buoyInfoStyle = lipgloss.NewStyle().Faint(true)
-var tideErrStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // red
+var buoyTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("44"))
+var buoyInfoStyle = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("246"))
+var tideErrStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("203")) // muted red
 
 // section represents a logically grouped portion of the buoy view.
 type section struct {
@@ -153,7 +153,7 @@ func renderTideSection(bd *BuoyData) section {
 				col += 1
 			}
 			if col >= 0 && col < lc.Canvas.Width() {
-				lineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+				lineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
 				for y := 0; y < lc.Model.Origin().Y; y++ {
 					p := canvas.Point{X: col, Y: y}
 					cell := lc.Canvas.Cell(p)
@@ -167,10 +167,10 @@ func renderTideSection(bd *BuoyData) section {
 		}
 	}
 	sec.add(lc.View())
-	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
+	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("44"))
 	sec.add(legendStyle.Render("─") + " " + buoyInfoStyle.Render("Predicted tide"))
 	if now := time.Now(); (now.Equal(minTime) || now.After(minTime)) && (now.Equal(maxTime) || now.Before(maxTime)) {
-		sec.add(lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Render("│") + " " + buoyInfoStyle.Render("Current time"))
+		sec.add(lipgloss.NewStyle().Foreground(lipgloss.Color("159")).Render("│") + " " + buoyInfoStyle.Render("Current time"))
 	}
 	tzName, _ := minTime.Zone()
 	sec.add(fmt.Sprintf("min %.2f / max %.2f | %s - %s %s", minV, maxV, minTime.Format("15:04"), maxTime.Format("15:04"), tzName))
@@ -178,13 +178,18 @@ func renderTideSection(bd *BuoyData) section {
 }
 
 // View renders buoy data using section-based layout.
-func View(data *BuoyData) string {
+// View renders buoy data (legacy signature) without width-based centering.
+func View(data *BuoyData) string { return ViewSized(data, 0) }
+
+// ViewSized renders buoy data with optional width hint. If width > 0 the
+// leading ASCII art logo is horizontally centered within that width.
+func ViewSized(data *BuoyData, width int) string {
 	if data == nil {
 		return buoyInfoStyle.Render("No buoy configured yet. Configure in $HOME/.surflog.yaml")
 	}
 	sections := []section{renderWaveSection(data), renderTideSection(data)}
 	var b strings.Builder
-	b.WriteString(buoyTitleStyle.Render(`⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣀⠀⠀⠀
+	art := `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣿⣷⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⣠⠴⠒⠋⢉⡝⠲⢦⡀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⠀⠀
 ⠀⠀⠀⠀⢀⡴⠚⢡⣤⣤⣴⣾⣷⣷⣨⢷⣀⡀⠀⠀⠀⠀⠹⢿⣿⣿⡿⠋⠀⠀
@@ -195,9 +200,21 @@ func View(data *BuoyData) string {
 ⠀⠙⢿⣿⣿⣿⠟⠋⠀⠀⠀⠀⠀⠙⠿⣦⣄⣀⡀⠀⣀⣀⣠⠴⠚⣁⡠⣾⣯⢟
 ⠀⠠⣄⣀⣀⡀⠲⡄⠰⠒⠃⡴⣶⣦⡐⢄⣯⣍⡛⠛⠉⢉⡀⢀⣩⠵⠶⠛⡵⢛
 ⠀⣤⣾⠛⣟⣹⣦⣒⣢⢿⣾⣧⡸⢙⠿⣶⣷⣬⣊⣳⣿⣽⣟⡟⠛⣋⣒⣓⣒⣪
-⠀⠿⠃⠀⠹⠿⠿⠧⠴⠶⠾⡿⠇⠤⠕⠚⠿⠿⠟⠻⠛⠭⠥⠶⠭⠭⠤⠤⠤⠤
-`))
-	b.WriteString("\n")
+⠀⠿⠃⠀⠹⠿⠿⠧⠴⠶⠾⡿⠇⠤⠕⠚⠿⠿⠟⠻⠛⠭⠥⠶⠭⠭⠤⠤⠤⠤`
+	// Determine art width
+	artLines := strings.Split(art, "\n")
+	maxArtWidth := 0
+	for _, l := range artLines {
+		if w := lipgloss.Width(l); w > maxArtWidth {
+			maxArtWidth = w
+		}
+	}
+	if width > maxArtWidth+1 { // center only if we have room
+		// Use lipgloss.Place to center block
+		art = lipgloss.Place(width, len(artLines), lipgloss.Center, lipgloss.Top, art)
+	}
+	b.WriteString(buoyTitleStyle.Render(art))
+	b.WriteString("\n\n\n\n")
 	first := true
 	for _, s := range sections {
 		if s.err == nil && len(s.lines) == 0 { // skip empty

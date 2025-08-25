@@ -31,12 +31,12 @@ type Journal struct {
 }
 
 var (
-	statusBarStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 1)
-	filterMatchStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("219")).Bold(true)
-	journalTitleBarStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99"))
-	detailHeaderStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Underline(true)
-	detailMetaStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	faintStyle           = lipgloss.NewStyle().Faint(true)
+	statusBarStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Padding(0, 1)
+	filterMatchStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("159")).Bold(true)
+	journalTitleBarStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("44"))
+	detailHeaderStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51")).Underline(true)
+	detailMetaStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
+	faintStyle           = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("245"))
 )
 
 // NewJournal constructs a journal loading entries via the service rooted in user config dir.
@@ -109,7 +109,7 @@ func (j *Journal) ensureList(width, height int) {
 		l.SetFilteringEnabled(true)
 		l.Styles.Title = journalTitleBarStyle
 		l.Styles.StatusBar = statusBarStyle
-		l.Styles.PaginationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		l.Styles.PaginationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 		l.Styles.HelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 		j.list = l
 		j.ready = true
