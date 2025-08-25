@@ -57,7 +57,7 @@ func renderWaveSection(bd *BuoyData) section {
 
 // renderTideSection builds the tide timeseries chart and stats.
 func renderTideSection(bd *BuoyData) section {
-	sec := newSection("Tide")
+	sec := newSection("Tide (ft)")
 	if bd == nil {
 		sec.add("No data")
 		return sec
@@ -166,7 +166,6 @@ func renderTideSection(bd *BuoyData) section {
 			}
 		}
 	}
-	sec.add("(ft) timeseries:")
 	sec.add(lc.View())
 	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
 	sec.add(legendStyle.Render("─") + " " + buoyInfoStyle.Render("Predicted tide"))

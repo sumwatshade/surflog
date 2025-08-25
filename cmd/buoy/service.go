@@ -131,95 +131,120 @@ func (s *dataService) GetWaveSummary() (WaveSummary, error) {
 		return WaveSummary{}, err
 	}
 
-	// Scan lines, find first non-comment, non-empty line (latest reading)
-	var latestLine string
-	for _, line := range splitLines(string(body)) {
+	lines := splitLines(string(body))
+	// collect up to 5 most recent data lines
+	var dataLines []string
+	for _, line := range lines {
 		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
-		latestLine = line
-		break
+		dataLines = append(dataLines, line)
+		if len(dataLines) == 5 { // we only need first 5 (already newest first in file)
+			break
+		}
 	}
-	if latestLine == "" {
+	if len(dataLines) == 0 {
 		return WaveSummary{}, errors.New("no data lines in spec file")
 	}
 
-	fields := fieldsCondense(latestLine)
-	if len(fields) < 15 { // require all expected columns
-		return WaveSummary{}, errors.New("unexpected column count in spec line: " + latestLine)
+	type parsed struct {
+		ts       time.Time
+		wvht     float64
+		swellH   float64
+		swellP   float64
+		windH    float64
+		windP    float64
+		swellDir string
+		windDir  string
+		steep    string
+		apd      float64
+		mwd      int
 	}
 
-	// Parse date/time components
-	year, err := strconv.Atoi(fields[0])
-	if err != nil {
-		return WaveSummary{}, err
+	var parsedRows []parsed
+	for _, ln := range dataLines {
+		fields := fieldsCondense(ln)
+		if len(fields) < 15 {
+			continue // skip malformed
+		}
+		// Parse timestamp
+		year, err1 := strconv.Atoi(fields[0])
+		mon, err2 := strconv.Atoi(fields[1])
+		day, err3 := strconv.Atoi(fields[2])
+		hour, err4 := strconv.Atoi(fields[3])
+		minute, err5 := strconv.Atoi(fields[4])
+		if err1 != nil || err2 != nil || err3 != nil || err4 != nil || err5 != nil {
+			continue
+		}
+		ts := time.Date(year, time.Month(mon), day, hour, minute, 0, 0, time.UTC)
+		// helper parse float with graceful skip
+		parseF := func(v string) (float64, bool) {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return 0, false
+			}
+			return f, true
+		}
+		wvht, ok1 := parseF(fields[5])
+		swellH, ok2 := parseF(fields[6])
+		swellP, ok3 := parseF(fields[7])
+		windH, ok4 := parseF(fields[8])
+		windP, ok5 := parseF(fields[9])
+		apd, ok6 := parseF(fields[13])
+		mwd, err := strconv.Atoi(fields[14])
+		if err != nil { // skip direction if invalid
+			mwd = 0
+		}
+		if !(ok1 && ok2 && ok3 && ok4 && ok5 && ok6) {
+			// If any numeric field failed parsing, skip this row for averaging to avoid bias.
+			continue
+		}
+		parsedRows = append(parsedRows, parsed{
+			ts:       ts,
+			wvht:     wvht,
+			swellH:   swellH,
+			swellP:   swellP,
+			windH:    windH,
+			windP:    windP,
+			swellDir: fields[10],
+			windDir:  fields[11],
+			steep:    fields[12],
+			apd:      apd,
+			mwd:      mwd,
+		})
 	}
-	month, err := strconv.Atoi(fields[1])
-	if err != nil {
-		return WaveSummary{}, err
+	if len(parsedRows) == 0 {
+		return WaveSummary{}, errors.New("no parsable data rows")
 	}
-	day, err := strconv.Atoi(fields[2])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	hour, err := strconv.Atoi(fields[3])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	minute, err := strconv.Atoi(fields[4])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	ts := time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.UTC)
 
-	parseF := func(s string) (float64, error) {
-		return strconv.ParseFloat(s, 64)
+	// Average numeric fields
+	var sumWvht, sumSwellH, sumSwellP, sumWindH, sumWindP, sumApd float64
+	var sumMwd float64
+	for _, r := range parsedRows {
+		sumWvht += r.wvht
+		sumSwellH += r.swellH
+		sumSwellP += r.swellP
+		sumWindH += r.windH
+		sumWindP += r.windP
+		sumApd += r.apd
+		sumMwd += float64(r.mwd)
 	}
-	wvht, err := parseF(fields[5])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	swellH, err := parseF(fields[6])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	swellP, err := parseF(fields[7])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	windH, err := parseF(fields[8])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	windP, err := parseF(fields[9])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	swellDir := fields[10]
-	windDir := fields[11]
-	steep := fields[12]
-	apd, err := parseF(fields[13])
-	if err != nil {
-		return WaveSummary{}, err
-	}
-	mwd, err := strconv.Atoi(fields[14])
-	if err != nil {
-		return WaveSummary{}, err
-	}
+	n := float64(len(parsedRows))
+	latest := parsedRows[0] // first row is most recent
 
 	return WaveSummary{
 		stationId:            stationID,
-		time:                 ts,
-		wvht:                 wvht,
-		swellHeight:          swellH,
-		swellPeriod:          swellP,
-		windWaveHeight:       windH,
-		windWavePeriod:       windP,
-		swellDirection:       swellDir,
-		windWaveDirection:    windDir,
-		steepness:            steep,
-		averagePeriod:        apd,
-		meanWaveDirectionDeg: mwd,
+		time:                 latest.ts,
+		wvht:                 sumWvht / n,
+		swellHeight:          sumSwellH / n,
+		swellPeriod:          sumSwellP / n,
+		windWaveHeight:       sumWindH / n,
+		windWavePeriod:       sumWindP / n,
+		swellDirection:       latest.swellDir,
+		windWaveDirection:    latest.windDir,
+		steepness:            latest.steep,
+		averagePeriod:        sumApd / n,
+		meanWaveDirectionDeg: int(sumMwd/n + 0.5), // simple rounded average
 	}, nil
 }
 
