@@ -1,12 +1,16 @@
 package journal
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/viper"
 	"github.com/sumwatshade/surflog/cmd/create"
 )
 
@@ -18,6 +22,7 @@ type Journal struct {
 	width   int
 	height  int
 	detail  bool // whether we're showing a single entry
+	svc     Service
 }
 
 var (
@@ -29,19 +34,28 @@ var (
 	faintStyle           = lipgloss.NewStyle().Faint(true)
 )
 
-// NewJournal constructs a journal with some sample entries.
+// NewJournal constructs a journal loading entries via the service rooted in user config dir.
 func NewJournal() *Journal {
 	j := &Journal{}
-	// Seed with sample entries for now; in future load from disk.
-	samples := []create.Entry{
-		{Spot: "Lower Trestles", Location: "San Clemente, CA", WaveData: "3-4ft SW", Comments: "Fun morning session, light offshore."},
-		{Spot: "Mavericks", Location: "Half Moon Bay, CA", WaveData: "18ft NW", Comments: "Just watching, not paddling out."},
-		{Spot: "Pipeline", Location: "Oahu, HI", WaveData: "8-10ft N", Comments: "Heavy barrels, crowded."},
-		{Spot: "Rincon", Location: "Santa Barbara, CA", WaveData: "5ft W", Comments: "Long peeling rights, glassy."},
-		{Spot: "Malibu", Location: "Malibu, CA", WaveData: "2-3ft S", Comments: "Cruisy logs everywhere."},
-	}
-	for _, e := range samples {
-		j.AddEntry(e)
+	// Assume viper always has journal.dir (set via default in initConfig or user override)
+	dir := strings.TrimSpace(viper.GetString("journal.dir"))
+	if dir != "" {
+		// expand leading ~ or make relative absolute
+		if strings.HasPrefix(dir, "~") {
+			if home, herr := os.UserHomeDir(); herr == nil {
+				dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+			}
+		} else if !filepath.IsAbs(dir) {
+			if wd, werr := os.Getwd(); werr == nil {
+				dir = filepath.Join(wd, dir)
+			}
+		}
+		if svc, serr := NewFileService(dir); serr == nil {
+			if list, lerr := svc.List(); lerr == nil {
+				j.Entries = append(j.Entries, list...)
+			}
+			j.svc = svc
+		}
 	}
 	return j
 }
@@ -52,6 +66,19 @@ func (j *Journal) AddEntry(entry create.Entry) {
 	if j.ready {
 		j.list.InsertItem(0, journalItem{entry}) // newest first
 	}
+}
+
+// Persist creates the entry via the underlying service (if available) and adds it to the list.
+func (j *Journal) Persist(entry create.Entry) (create.Entry, error) {
+	if j.svc == nil {
+		return create.Entry{}, errors.New("journal service unavailable")
+	}
+	saved, err := j.svc.Create(entry)
+	if err != nil {
+		return create.Entry{}, err
+	}
+	j.AddEntry(saved)
+	return saved, nil
 }
 
 // ensureList creates or resizes the list model based on dimensions.
@@ -133,8 +160,7 @@ func (j *Journal) View() string {
 		fmt.Fprintln(b, journalTitleBarStyle.Render("Journal Entry"))
 		fmt.Fprintln(b)
 		fmt.Fprintln(b, detailHeaderStyle.Render(sel.Spot))
-		fmt.Fprintln(b, detailMetaStyle.Render(fmt.Sprintf("Location: %s", sel.Location)))
-		fmt.Fprintln(b, detailMetaStyle.Render(fmt.Sprintf("Waves: %s", sel.WaveData)))
+		fmt.Fprintln(b, detailMetaStyle.Render(sel.WaveSummary.String()))
 		if sel.Comments != "" {
 			fmt.Fprintln(b)
 			fmt.Fprintln(b, sel.Comments)

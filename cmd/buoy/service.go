@@ -3,6 +3,7 @@ package buoy
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,12 +11,12 @@ import (
 )
 
 type Service interface {
-	GetTideData() (tideData, error)
+	GetTideData() (TideData, error)
 	// GetWaveSummary retrieves the latest detailed wave summary (.spec) entry
 	// for a fixed buoy station and distills it into structured data. Currently
 	// hard-coded to station 46274 (San Francisco Bar / SF approach) and returns
 	// the most recent observation (first non-comment line in the .spec file).
-	GetWaveSummary() (waveSummary, error)
+	GetWaveSummary() (WaveSummary, error)
 }
 
 var _ Service = (*dataService)(nil)
@@ -24,7 +25,7 @@ func NewService() Service {
 	return &dataService{}
 }
 
-// waveSummary provides a distilled view of a single line from the NOAA
+// WaveSummary provides a distilled view of a single line from the NOAA
 // detailed wave summary (.spec) file.
 // Field descriptions (see https://www.ndbc.noaa.gov/faq/measdes.shtml):
 //
@@ -34,7 +35,7 @@ func NewService() Service {
 //	STEEPNESS: Wave steepness category
 //	APD: Average Wave Period (s)
 //	MWD: Mean Wave Direction (deg true)
-type waveSummary struct {
+type WaveSummary struct {
 	stationId            string
 	time                 time.Time
 	wvht                 float64
@@ -49,27 +50,32 @@ type waveSummary struct {
 	meanWaveDirectionDeg int
 }
 
+func (w *WaveSummary) String() string {
+	return fmt.Sprintf("%.1fft sig (swell %.1fft @ %.0fs %s / wind %.1fft @ %.0fs %s) | steep %s | avg %.1fs | mean %d°",
+		w.wvht, w.swellHeight, w.swellPeriod, w.swellDirection, w.windWaveHeight, w.windWavePeriod, w.windWaveDirection, w.steepness, w.averagePeriod, w.meanWaveDirectionDeg)
+}
+
 // GetTideData retrieves today's tide prediction data for a fixed station.
 // Currently hard-coded to station 9410170 (San Francisco, CA) and returns
 // times in GMT as provided by the API.
-func (s *dataService) GetTideData() (tideData, error) {
+func (s *dataService) GetTideData() (TideData, error) {
 	const stationID = "9410170"
 	const url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=today&station=" + stationID + "&product=predictions&datum=MLLW&time_zone=gmt&units=english&format=json"
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return tideData{}, err
+		return TideData{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return tideData{}, errors.New("unexpected status code: " + resp.Status)
+		return TideData{}, errors.New("unexpected status code: " + resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return tideData{}, err
+		return TideData{}, err
 	}
 
 	// Struct matching NOAA response
@@ -81,10 +87,10 @@ func (s *dataService) GetTideData() (tideData, error) {
 	}
 
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return tideData{}, err
+		return TideData{}, err
 	}
 
-	td := tideData{stationId: stationID, points: make([]struct {
+	td := TideData{stationId: stationID, points: make([]struct {
 		time  string
 		value float64
 	}, len(parsed.Predictions))}
@@ -92,7 +98,7 @@ func (s *dataService) GetTideData() (tideData, error) {
 	for i, p := range parsed.Predictions {
 		v, err := strconv.ParseFloat(p.V, 64)
 		if err != nil {
-			return tideData{}, err
+			return TideData{}, err
 		}
 		td.points[i] = struct {
 			time  string
@@ -105,24 +111,24 @@ func (s *dataService) GetTideData() (tideData, error) {
 
 // GetWaveSummary fetches the latest detailed wave summary (.spec) file for a
 // fixed buoy station and returns the most recent observation parsed into a
-// waveSummary struct.
-func (s *dataService) GetWaveSummary() (waveSummary, error) {
+// WaveSummary struct.
+func (s *dataService) GetWaveSummary() (WaveSummary, error) {
 	const stationID = "46274"
 	const url = "https://www.ndbc.noaa.gov/data/realtime2/" + stationID + ".spec"
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return waveSummary{}, errors.New("unexpected status code: " + resp.Status)
+		return WaveSummary{}, errors.New("unexpected status code: " + resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 
 	// Scan lines, find first non-comment, non-empty line (latest reading)
@@ -135,34 +141,34 @@ func (s *dataService) GetWaveSummary() (waveSummary, error) {
 		break
 	}
 	if latestLine == "" {
-		return waveSummary{}, errors.New("no data lines in spec file")
+		return WaveSummary{}, errors.New("no data lines in spec file")
 	}
 
 	fields := fieldsCondense(latestLine)
 	if len(fields) < 15 { // require all expected columns
-		return waveSummary{}, errors.New("unexpected column count in spec line: " + latestLine)
+		return WaveSummary{}, errors.New("unexpected column count in spec line: " + latestLine)
 	}
 
 	// Parse date/time components
 	year, err := strconv.Atoi(fields[0])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	month, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	day, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	hour, err := strconv.Atoi(fields[3])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	minute, err := strconv.Atoi(fields[4])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	ts := time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.UTC)
 
@@ -171,37 +177,37 @@ func (s *dataService) GetWaveSummary() (waveSummary, error) {
 	}
 	wvht, err := parseF(fields[5])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	swellH, err := parseF(fields[6])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	swellP, err := parseF(fields[7])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	windH, err := parseF(fields[8])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	windP, err := parseF(fields[9])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	swellDir := fields[10]
 	windDir := fields[11]
 	steep := fields[12]
 	apd, err := parseF(fields[13])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 	mwd, err := strconv.Atoi(fields[14])
 	if err != nil {
-		return waveSummary{}, err
+		return WaveSummary{}, err
 	}
 
-	return waveSummary{
+	return WaveSummary{
 		stationId:            stationID,
 		time:                 ts,
 		wvht:                 wvht,

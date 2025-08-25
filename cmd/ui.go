@@ -16,7 +16,7 @@ type model struct {
 	rightView  string // "journal" or "create"
 	buoyData   *buoy.BuoyData
 	journal    *journal.Journal
-	draftEntry *create.Entry
+	createForm *create.Model
 	width      int
 	height     int
 	// help / key bindings
@@ -25,7 +25,7 @@ type model struct {
 }
 
 func initialModel() model {
-	return model{rightView: "journal", buoyData: nil, journal: journal.NewJournal(), keys: keys, help: bhelp.New()}
+	return model{rightView: "journal", buoyData: nil, journal: journal.NewJournal(), createForm: create.NewModel(), keys: keys, help: bhelp.New()}
 }
 
 func (m model) Init() tea.Cmd {
@@ -63,7 +63,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-	// create view currently static
+	if m.rightView == "create" {
+		m.createForm, cmd = create.UpdateModel(m.createForm, msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		if m.createForm != nil && m.createForm.IsDoneAndUnpersisted() {
+			if m.journal != nil {
+				if saved, err := m.journal.Persist(m.createForm.Entry); err == nil {
+					_ = saved
+					m.createForm.MarkPersisted()
+					// reset after short delay command maybe; for now immediate
+					m.createForm = create.NewModel()
+				}
+			}
+		}
+	}
+	// create view dynamic updates
 	if len(cmds) == 0 {
 		return m, nil
 	}
@@ -81,7 +97,7 @@ func (m model) View() string {
 			right = "journal unavailable"
 		}
 	case "create":
-		right = create.View(m.draftEntry)
+		right = create.View(m.createForm)
 	default:
 		right = "unknown"
 	}

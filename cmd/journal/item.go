@@ -1,7 +1,6 @@
 package journal
 
 import (
-	"fmt"
 	"io"
 	"strings"
 
@@ -21,9 +20,9 @@ var (
 type journalItem struct{ create.Entry }
 
 func (i journalItem) Title() string       { return i.Spot }
-func (i journalItem) Description() string { return fmt.Sprintf("%s • %s", i.Location, i.WaveData) }
+func (i journalItem) Description() string { return i.WaveSummary.String() }
 func (i journalItem) FilterValue() string {
-	return strings.ToLower(strings.Join([]string{i.Spot, i.Location, i.WaveData, i.Comments}, " "))
+	return strings.ToLower(strings.Join([]string{i.Spot, i.WaveSummary.String(), i.Comments}, " "))
 }
 
 type itemDelegate struct{}

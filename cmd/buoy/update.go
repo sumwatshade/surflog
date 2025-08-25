@@ -6,13 +6,13 @@ import (
 
 // internal message indicating tide data fetch completed
 type tideFetchedMsg struct {
-	tide tideData
+	tide TideData
 	err  error
 }
 
 // internal message for wave summary fetch completion
 type waveFetchedMsg struct {
-	wave waveSummary
+	wave WaveSummary
 	err  error
 }
 
